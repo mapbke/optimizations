@@ -24,6 +24,7 @@ echo 13  Optional advanced services + scheduled tasks
 echo 14  Clean 7+ day old user TEMP files
 echo 15  GPU options (HAGS + Game Mode Settings)
 echo 16  Network (disable Windows update P2P sharing)
+echo 17  ULTRA aggressive preset (backed-up, service impact!)
 echo  0  Exit
 echo =========================================================
 set "option="
@@ -50,6 +51,7 @@ if "%option%"=="13" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~d
 if "%option%"=="14" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Clean-Temp.ps1"
 if "%option%"=="15" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\GPU-Options.ps1"
 if "%option%"=="16" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Network-Options.ps1"
+if "%option%"=="17" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Ultra.ps1"
 if "%option%"=="0" exit /b 0
 echo.
 pause
