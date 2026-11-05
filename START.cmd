@@ -19,6 +19,9 @@ echo  8  Compare before/after CS2 benchmark CSV
 echo  9  UNDO all backed-up registry and power changes
 echo 10  Diagnose mouse and USB devices (read only)
 echo 11  Review startup programs in Windows Settings
+echo 12  MAX profile (deep Windows + power optimization)
+echo 13  Optional advanced services + scheduled tasks
+echo 14  Clean 7+ day old user TEMP files
 echo  0  Exit
 echo =========================================================
 set "option="
@@ -40,6 +43,9 @@ if "%option%"=="8" (
 if "%option%"=="9" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Undo.ps1"
 if "%option%"=="10" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Input-Diagnostics.ps1"
 if "%option%"=="11" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Startup-Review.ps1"
+if "%option%"=="12" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Pro-Optimize.ps1" -Mode Max
+if "%option%"=="13" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Optional-Services.ps1"
+if "%option%"=="14" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Clean-Temp.ps1"
 if "%option%"=="0" exit /b 0
 echo.
 pause
