@@ -72,16 +72,19 @@ function Restore-RegistryState {
     }
 }
 
+function Get-PendingRegistryChanges {
+    param([object[]]$Specs)
+    foreach ($spec in $Specs) {
+        $old = Get-RegistryState -Path $spec.Path -Name $spec.Name
+        if (-not $old.Exists -or $old.Kind -ne $spec.Kind -or $old.Value -cne $spec.Value) {
+            [pscustomobject]@{ Spec = $spec; Previous = $old }
+        }
+    }
+}
+
 function Invoke-RegistryProfile {
     param([string]$Profile, [object[]]$Specs)
-    $changes = @(
-        foreach ($spec in $Specs) {
-            $old = Get-RegistryState -Path $spec.Path -Name $spec.Name
-            if (-not $old.Exists -or $old.Kind -ne $spec.Kind -or $old.Value -cne $spec.Value) {
-                [pscustomobject]@{ Spec = $spec; Previous = $old }
-            }
-        }
-    )
+    $changes = @(Get-PendingRegistryChanges -Specs $Specs)
     if ($changes.Count -eq 0) {
         Write-Host 'All selected values already match this profile.'
         return

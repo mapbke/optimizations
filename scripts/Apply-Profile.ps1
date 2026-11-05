@@ -1,5 +1,8 @@
 [CmdletBinding()]
-param([Parameter(Mandatory)][ValidateSet('Capture', 'Desktop', 'Mouse')][string]$Profile)
+param(
+    [Parameter(Mandatory)][ValidateSet('Capture', 'Desktop', 'Mouse')][string]$Profile,
+    [switch]$PassThru
+)
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 
@@ -9,8 +12,11 @@ switch ($Profile) {
     'Desktop' { Write-Host 'Reduces animations for windows and the taskbar and turns off transparency.' }
     'Mouse'   { Write-Host 'Turns off Windows pointer acceleration and keeps your pointer speed.' }
 }
-$specs | ForEach-Object { Write-Host ("  {0}\{1} = {2}" -f $_.Path, $_.Name, $_.Value) }
-if ((Read-Host 'Apply these changes? Type YES') -cne 'YES') { return }
+$specs | ForEach-Object { Write-Verbose ("  {0}\{1} = {2}" -f $_.Path, $_.Name, $_.Value) }
+if ((Read-Host 'Apply? [Y / Enter to cancel]') -notmatch '^y(es)?$') {
+    if ($PassThru) { return $false }
+    return
+}
 
 $lock = Enter-BackupLock
 try {
@@ -18,4 +24,5 @@ try {
 } finally {
     $lock.Dispose()
 }
+if ($PassThru) { return $true }
 Write-Host 'Sign out and back in to refresh user settings.'
