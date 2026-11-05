@@ -15,6 +15,7 @@ try {
     }
 
     $usesPower = $Profile -in @('Hard', 'Power')
+    $partialMessage = '(PARTIAL) Desktop and background settings saved. The CPU power plan was skipped. Restart Windows.'
     $usesMachinePolicy = $Profile -in @('Delivery', 'AppBackground')
     if ($usesMachinePolicy) {
         $version = Get-ItemProperty -LiteralPath 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
@@ -48,6 +49,10 @@ try {
         if ($ExpectedSid) { throw 'Administrator privileges are required.' }
         $commandLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Profile {1} -ExpectedSid {2}' -f $PSCommandPath, $Profile, $sid
         $child = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $commandLine -Wait -PassThru
+        if ($child.ExitCode -eq 2 -and $Profile -eq 'Hard') {
+            Write-Warning $partialMessage
+            return
+        }
         if ($child.ExitCode -ne 0) { throw 'The administrator process could not complete the profile.' }
         Write-Host '(ACTIVATED) Restart Windows. Run RESTORE.cmd as administrator to undo.' -ForegroundColor Green
         return
@@ -55,8 +60,17 @@ try {
 
     $lock = Enter-BackupLock
     $powerChange = $null
+    $powerSkipped = $false
     try {
-        if ($usesPower) { $powerChange = Enable-PackPowerMax }
+        if ($usesPower) {
+            try {
+                $powerChange = Enable-PackPowerMax
+            } catch [System.PlatformNotSupportedException] {
+                if ($Profile -ne 'Hard') { throw }
+                $powerSkipped = $true
+                Write-Warning $_.Exception.Message
+            }
+        }
         if ($Profile -ne 'Power') {
             $specs = @(Get-ProfileSpecs -Profile $Profile)
             Invoke-RegistryProfile -Profile $Profile -Specs $specs
@@ -73,6 +87,11 @@ try {
         throw $failure
     } finally {
         $lock.Dispose()
+    }
+    if ($powerSkipped) {
+        if ($ExpectedSid) { exit 2 }
+        Write-Warning $partialMessage
+        return
     }
     Write-Host '(ACTIVATED) Restart Windows. Run RESTORE.cmd to undo.' -ForegroundColor Green
 } catch {

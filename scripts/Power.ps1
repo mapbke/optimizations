@@ -41,7 +41,11 @@ function Restore-PackPowerBackup {
 }
 
 function Enable-PackPowerMax {
-    $previous = Get-PackActivePowerGuid
+    try {
+        $previous = Get-PackActivePowerGuid
+    } catch {
+        throw [System.PlatformNotSupportedException]::new("CPU power plan skipped. $($_.Exception.Message)", $_.Exception)
+    }
     $sid = Get-PackUserSid
     foreach ($file in Get-ChildItem -LiteralPath $script:Backups -Filter 'snapshot-*-Power-*.json' -File) {
         $backup = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
@@ -52,10 +56,15 @@ function Enable-PackPowerMax {
         }
     }
 
-    $settings = [ordered]@{ PERFEPP = '0'; PERFBOOSTMODE = '2'; CPMINCORES = '100'; PERFEPP1 = '0'; CPMINCORES1 = '100' }
-    $aliases = (Invoke-PackPowerCfg @('/aliases')) -join [Environment]::NewLine
-    $available = @($settings.Keys | Where-Object { $aliases -match ('\b' + $_ + '\b') })
-    if ($available.Count -eq 0) { throw 'The required CPU power options are unavailable.' }
+    # Known Windows power setting GUIDs also work when aliases are absent.
+    $processorSubgroup = '54533251-82be-4824-96c1-47b60b740d00'
+    $settings = @(
+        @{ Name = 'PERFEPP'; Id = '36687f9e-e3a5-4dbf-b1dc-15eb381c6863'; Value = '0' }
+        @{ Name = 'PERFBOOSTMODE'; Id = 'be337238-0d82-4146-a960-4f3749d470c7'; Value = '2' }
+        @{ Name = 'CPMINCORES'; Id = '0cc5b647-c1df-4637-891a-dec35c318583'; Value = '100' }
+        @{ Name = 'PERFEPP1'; Id = '36687f9e-e3a5-4dbf-b1dc-15eb381c6864'; Value = '0' }
+        @{ Name = 'CPMINCORES1'; Id = '0cc5b647-c1df-4637-891a-dec35c318584'; Value = '100' }
+    )
 
     $new = [guid]::NewGuid()
     $payload = [ordered]@{ Profile = 'PowerMax'; PreviousGuid = $previous.ToString(); NewGuid = $new.ToString() }
@@ -65,9 +74,16 @@ function Enable-PackPowerMax {
     try {
         Invoke-PackPowerCfg @('/duplicatescheme', $previous.ToString(), $new.ToString()) | Out-Null
         Invoke-PackPowerCfg @('/changename', $new.ToString(), 'optimizations CPU Max (AC)') | Out-Null
-        foreach ($setting in $available) {
-            Invoke-PackPowerCfg @('/setacvalueindex', $new.ToString(), 'SUB_PROCESSOR', $setting, $settings[$setting]) | Out-Null
+        $appliedCount = 0
+        foreach ($setting in $settings) {
+            try {
+                Invoke-PackPowerCfg @('/setacvalueindex', $new.ToString(), $processorSubgroup, $setting.Id, $setting.Value) | Out-Null
+                $appliedCount++
+            } catch {
+                Write-Warning "Could not apply $($setting.Name). $($_.Exception.Message)"
+            }
         }
+        if ($appliedCount -eq 0) { throw 'Windows rejected all five CPU power settings.' }
         if ((Get-PackActivePowerGuid) -ne $previous) { throw 'The active power plan changed. Run the script again.' }
         Invoke-PackPowerCfg @('/setactive', $new.ToString()) | Out-Null
         if ((Get-PackActivePowerGuid) -ne $new) { throw 'Windows did not activate the new power plan.' }
@@ -76,11 +92,11 @@ function Enable-PackPowerMax {
         try {
             Restore-PackPowerBackup -Backup $backup -File $file
         } catch {
-            Write-Warning "Power rollback incomplete. Run RESTORE.cmd as administrator. $_"
+            throw "CPU power plan rollback failed. Run RESTORE.cmd as administrator. $($_.Exception.Message)"
         }
-        throw $failure
+        throw [System.PlatformNotSupportedException]::new("CPU power plan skipped. $($failure.Exception.Message)", $failure.Exception)
     }
 
-    Write-Host 'CPU Max is active. AC settings applied.' -ForegroundColor Green
+    Write-Host "CPU Max is active. Applied $appliedCount of $($settings.Count) AC settings." -ForegroundColor Green
     return [pscustomobject]@{ Backup = $backup; File = $file }
 }
