@@ -27,9 +27,9 @@ foreach ($metric in $metrics) {
     $aSort = @($a | ForEach-Object { $_.$metric } | Sort-Object)
     $bm = $bSort[[int][math]::Floor(($bSort.Count - 1) / 2)]
     $am = $aSort[[int][math]::Floor(($aSort.Count - 1) / 2)]
-    if (($bSort.Count % 2) -eq 0) { $bm = ($bSort[$bSort.Count/2 - 1] + $bSort[$bSort.Count/2]) / 2 }
-    if (($aSort.Count % 2) -eq 0) { $am = ($aSort[$aSort.Count/2 - 1] + $aSort[$aSort.Count/2]) / 2 }
+    if (($bSort.Count % 2) -eq 0) { $bm = ($bSort[([int]($bSort.Count / 2) - 1)] + $bSort[[int]($bSort.Count / 2)]) / 2 }
+    if (($aSort.Count % 2) -eq 0) { $am = ($aSort[([int]($aSort.Count / 2) - 1)] + $aSort[[int]($aSort.Count / 2)]) / 2 }
     $delta = 100 * ($am - $bm) / $bm
-    Write-Host ('{0}: before {1:N1}, after {2:N1}, change {3:+0.0;-0.0;0.0}%%' -f $metric, $bm, $am, $delta)
+    Write-Host ('{0}: before {1:N1}, after {2:N1}, change {3:+0.0;-0.0;0.0}%' -f $metric, $bm, $am, $delta)
 }
 Write-Host 'Comparisons only mean something with identical map, scene, resolution, FPS cap and GPU settings.'
