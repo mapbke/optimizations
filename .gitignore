@@ -1,0 +1,9 @@
+# Never commit local machine-specific diagnostics, snapshots or benchmark logs
+backups/
+reports/
+benchmarks/before.csv
+benchmarks/after.csv
+*.log
+*.restored
+.DS_Store
+Thumbs.db
