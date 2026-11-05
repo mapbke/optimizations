@@ -1,23 +1,33 @@
-# Stops only explicitly approved user-facing apps for this session.
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
-$targets = @(
-    @{ Process = 'OneDrive'; Label = 'OneDrive sync client' },
-    @{ Process = 'ms-teams'; Label = 'Microsoft Teams (new)' },
-    @{ Process = 'Teams'; Label = 'Microsoft Teams (classic)' },
-    @{ Process = 'Widgets'; Label = 'Windows Widgets' },
-    @{ Process = 'PhoneExperienceHost'; Label = 'Phone Link' },
-    @{ Process = 'Clipchamp'; Label = 'Clipchamp' }
-)
-Write-Warning 'Closing apps can lose unsaved work. No service, driver, Windows Security, audio or game process is modified.'
-foreach ($target in $targets) {
-    $found = @(Get-Process -Name $target.Process -ErrorAction SilentlyContinue)
-    if ($found.Count -eq 0) { continue }
-    Write-Host "$($target.Label) - $($found.Count) instance(s) active."
-    if ((Read-Host "Close $($target.Process)? [y/N]") -ne 'y') { continue }
-    foreach ($p in $found) {
-        try { Stop-Process -Id $p.Id -ErrorAction Stop; Write-Host "Closed $($p.ProcessName) ($($p.Id))." -ForegroundColor Green }
-        catch { Write-Warning "Cannot close $($p.ProcessName): $_" }
-    }
+
+# Only apps with a window in the current Windows session are eligible.
+$targets = @('chrome', 'msedge', 'firefox', 'Spotify', 'ms-teams', 'Teams',
+    'EpicGamesLauncher', 'Battle.net', 'EADesktop', 'UbisoftConnect')
+$session = (Get-Process -Id $PID).SessionId
+$apps = @(Get-Process -Name $targets -ErrorAction SilentlyContinue |
+    Where-Object { $_.SessionId -eq $session -and $_.MainWindowHandle -ne [IntPtr]::Zero } |
+    Sort-Object ProcessName, Id)
+
+if ($apps.Count -eq 0) {
+    Write-Host 'No supported app windows are open.'
+    return
 }
-Write-Host 'Session cleanup complete. Some processes can restart automatically.'
+for ($index = 0; $index -lt $apps.Count; $index++) {
+    Write-Host ('{0,2}) {1} (PID {2})' -f ($index + 1), $apps[$index].ProcessName, $apps[$index].Id)
+}
+$answer = Read-Host 'Select one window by number, or press Enter to cancel'
+if (-not $answer) { return }
+$number = 0
+if (-not [int]::TryParse($answer, [ref]$number) -or $number -lt 1 -or $number -gt $apps.Count) {
+    throw 'Choose a listed number.'
+}
+
+$app = $apps[$number - 1]
+Write-Warning "Save your work in $($app.ProcessName). The app may stay in the notification area."
+if ((Read-Host 'Ask this window to close? Type CLOSE') -cne 'CLOSE') { return }
+if ($app.CloseMainWindow()) {
+    Write-Host "Close requested: $($app.ProcessName)"
+} else {
+    Write-Warning 'The window could not be closed.'
+}

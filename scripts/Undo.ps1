@@ -1,90 +1,35 @@
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 
-if (-not (Test-Path $script:Backups)) { Write-Host 'No backups found.'; exit 0 }
-$files = @(Get-ChildItem -LiteralPath $script:Backups -Filter 'snapshot-*.json' -File | Sort-Object LastWriteTime -Descending)
-if ($files.Count -eq 0) { Write-Host 'No pending backups.'; exit 0 }
-
-$requiresAdmin = $false
-foreach ($file in $files) {
-    try {
-        $info = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
-        if ($info.Kind -in @('Power','Services','Tasks')) { $requiresAdmin = $true }
-    } catch {}
+if (-not (Test-Path -LiteralPath $script:Backups)) {
+    Write-Host 'No release backups found.'
+    return
 }
-if ($requiresAdmin) {
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($id)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Host 'Requesting UAC to restore services, tasks and power plans.'
-        $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
-        try { Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $args -Verb RunAs -Wait }
-        catch { Write-Warning "UAC cancelled: $_" }
-        exit
-    }
-}
+if ((Read-Host 'Restore all saved release changes for this account? Type RESTORE') -cne 'RESTORE') { return }
 
-Write-Host "Pending backup files: $($files.Count)" -ForegroundColor Yellow
-$files | ForEach-Object { Write-Host ('  ' + $_.Name) }
-Write-Warning 'Restores tracked Registry, Windows services, scheduled tasks, power plan. Deleted Appx packages are NOT restored.'
-if ((Read-Host 'Restore? Type RESTORE') -cne 'RESTORE') { exit 0 }
-
-foreach ($file in $files) {
-    try {
+$lock = Enter-BackupLock
+try {
+    $files = @(Get-ChildItem -LiteralPath $script:Backups -Filter 'snapshot-*.json' -File | Sort-Object Name -Descending)
+    $sid = Get-PackUserSid
+    foreach ($file in $files) {
         $backup = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
-        if ($backup.Host -ne $env:COMPUTERNAME) {
-            Write-Warning "Backup from another computer skipped: $($file.Name)"
-            continue
+        if ($backup.Host -ne $env:COMPUTERNAME -or $backup.UserSid -ne $sid) { continue }
+        if ($backup.Schema -ne 1 -or $backup.Kind -ne 'Registry') {
+            throw "Unsupported backup: $($file.Name)"
         }
-        switch ([string]$backup.Kind) {
-            'Registry' {
-                foreach ($state in @($backup.Payload.Values)) { Restore-RegistryState -State $state }
-            }
-            'Power' {
-                $previous = [string]$backup.Payload.PreviousGuid
-                $regex = '^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
-                if ($previous -notmatch $regex) { throw "Invalid power scheme GUID: $previous" }
-                & powercfg.exe /setactive $previous | Out-Null
-                if ($LASTEXITCODE -ne 0) { throw 'Could not activate old power plan' }
-                $cloneProperty = $backup.Payload.PSObject.Properties['NewGuid']
-                if ($null -ne $cloneProperty -and -not [string]::IsNullOrWhiteSpace([string]$cloneProperty.Value)) {
-                    $newGuid = [string]$backup.Payload.NewGuid
-                    if ($newGuid -notmatch $regex -or $newGuid -eq $previous) { throw 'Invalid cloned power GUID' }
-                    & powercfg.exe /delete $newGuid | Out-Null
-                    if ($LASTEXITCODE -ne 0) { throw "Could not remove cloned power scheme $newGuid" }
-                }
-            }
-            'Services' {
-                foreach ($svc in @($backup.Payload.Values)) {
-                    $start = switch ([int]$svc.StartValue) {
-                        2 { if ([int]$svc.DelayValue -eq 1) { 'delayed-auto' } else { 'auto' } }
-                        3 { 'demand' }
-                        4 { 'disabled' }
-                        default { throw "Unsupported original service start setting $($svc.StartValue) for $($svc.Name)" }
-                    }
-                    & sc.exe config ([string]$svc.Name) 'start=' $start | Out-Null
-                    if ($LASTEXITCODE -ne 0) { throw "Could not restore startup mode for $($svc.Name)" }
-                    if ([bool]$svc.WasRunning) {
-                        Start-Service -Name $svc.Name -ErrorAction Stop
-                    }
-                }
-            }
-            'Tasks' {
-                foreach ($task in @($backup.Payload.Values)) {
-                    if ([bool]$task.WasEnabled) {
-                        Enable-ScheduledTask -TaskPath $task.Path -TaskName $task.Name -ErrorAction Stop | Out-Null
-                    } else {
-                        Disable-ScheduledTask -TaskPath $task.Path -TaskName $task.Name -ErrorAction Stop | Out-Null
-                    }
-                }
-            }
-            default { throw "Unknown backup kind: $($backup.Kind)" }
+
+        $specs = @(Get-ProfileSpecs -Profile $backup.Payload.Profile)
+        $values = @($backup.Payload.Values)
+        if ($values.Count -eq 0) { throw "Empty backup: $($file.Name)" }
+        foreach ($state in $values) {
+            $allowed = $specs | Where-Object { $_.Path -eq $state.Path -and $_.Name -eq $state.Name }
+            if (-not $allowed) { throw "Unexpected registry target in $($file.Name)" }
         }
-        Rename-Item -LiteralPath $file.FullName -NewName ($file.Name + '.restored') -ErrorAction Stop
+        foreach ($state in $values) { Restore-RegistryState -State $state }
+        Rename-Item -LiteralPath $file.FullName -NewName ($file.Name + '.restored')
         Write-Host "Restored: $($file.Name)" -ForegroundColor Green
-    } catch {
-        Write-Warning "Restore error $($file.Name): $_"
-        Write-Warning 'Backup kept pending so you can inspect and retry manually.'
     }
+} finally {
+    $lock.Dispose()
 }
-Write-Host 'Restore completed for every successful snapshot. Restart Windows.' -ForegroundColor Green
+Write-Host 'Restore finished. Sign out and back in if settings were restored.'

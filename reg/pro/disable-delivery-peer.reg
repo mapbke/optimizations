@@ -1,6 +1,0 @@
-Windows Registry Editor Version 5.00
-
-; HTTP-only (no P2P): keeps Windows Update functional.
-; Prefer NETWORK.cmd because it creates a backup.
-[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization]
-"DODownloadMode"=dword:00000000

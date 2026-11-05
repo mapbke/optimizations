@@ -1,7 +1,0 @@
-Windows Registry Editor Version 5.00
-
-; Disable Edge background mode and Startup Boost for current Windows user.
-; Direct .reg import does NOT create toolkit rollback snapshot: use MAX.cmd instead.
-[HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge]
-"BackgroundModeEnabled"=dword:00000000
-"StartupBoostEnabled"=dword:00000000
