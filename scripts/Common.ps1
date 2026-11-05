@@ -12,6 +12,12 @@ function Get-PackUserSid {
     return [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
 }
 
+function Test-PackAdministrator {
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
+    return $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Get-RegistryState {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Name)
     $state = [ordered]@{ Path = $Path; Name = $Name; Exists = $false; Value = $null; Kind = $null }
@@ -52,21 +58,30 @@ function Write-Backup {
     return $file
 }
 
+function Initialize-RegistryKey {
+    param([string]$Path)
+    if (Test-Path -LiteralPath $Path) { return }
+
+    $hive = switch ($Path.Substring(0, 6)) {
+        'HKCU:\' { [Microsoft.Win32.Registry]::CurrentUser }
+        'HKLM:\' { [Microsoft.Win32.Registry]::LocalMachine }
+        default { throw "Unsupported registry path: $Path" }
+    }
+    $key = $hive.CreateSubKey($Path.Substring(6))
+    $key.Dispose()
+}
+
 function Set-RegistrySpec {
     param([Parameter(Mandatory)][object]$Spec)
-    if (-not (Test-Path -LiteralPath $Spec.Path)) {
-        New-Item -Path $Spec.Path -Force | Out-Null
-    }
-    New-ItemProperty -Path $Spec.Path -Name $Spec.Name -Value $Spec.Value -PropertyType $Spec.Kind -Force | Out-Null
+    Initialize-RegistryKey -Path $Spec.Path
+    New-ItemProperty -LiteralPath $Spec.Path -Name $Spec.Name -Value $Spec.Value -PropertyType $Spec.Kind -Force | Out-Null
 }
 
 function Restore-RegistryState {
     param([Parameter(Mandatory)][object]$State)
     if ($State.Exists) {
-        if (-not (Test-Path -LiteralPath $State.Path)) {
-            New-Item -Path $State.Path -Force | Out-Null
-        }
-        New-ItemProperty -Path $State.Path -Name $State.Name -Value $State.Value -PropertyType $State.Kind -Force | Out-Null
+        Initialize-RegistryKey -Path $State.Path
+        New-ItemProperty -LiteralPath $State.Path -Name $State.Name -Value $State.Value -PropertyType $State.Kind -Force | Out-Null
     } elseif ((Get-RegistryState -Path $State.Path -Name $State.Name).Exists) {
         Remove-ItemProperty -LiteralPath $State.Path -Name $State.Name -ErrorAction Stop
     }
@@ -123,7 +138,7 @@ function Enter-BackupLock {
 }
 
 function Get-ProfileSpecs {
-    param([Parameter(Mandatory)][ValidateSet('Capture', 'Desktop', 'Mouse')][string]$Profile)
+    param([Parameter(Mandatory)][ValidateSet('Capture', 'Desktop', 'Mouse', 'Hard', 'Background', 'DesktopFast', 'Delivery', 'AppBackground')][string]$Profile)
     switch ($Profile) {
         'Capture' {
             @{ Path = 'HKCU:\System\GameConfigStore'; Name = 'GameDVR_Enabled'; Value = 0; Kind = 'DWord' }
@@ -133,6 +148,28 @@ function Get-ProfileSpecs {
             @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'; Name = 'EnableTransparency'; Value = 0; Kind = 'DWord' }
             @{ Path = 'HKCU:\Control Panel\Desktop\WindowMetrics'; Name = 'MinAnimate'; Value = '0'; Kind = 'String' }
             @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name = 'TaskbarAnimations'; Value = 0; Kind = 'DWord' }
+        }
+        'Hard' {
+            Get-ProfileSpecs -Profile Background
+            Get-ProfileSpecs -Profile DesktopFast
+        }
+        'Background' {
+            Get-ProfileSpecs -Profile Capture
+            @{ Path = 'HKCU:\SOFTWARE\Policies\Microsoft\Edge'; Name = 'BackgroundModeEnabled'; Value = 0; Kind = 'DWord' }
+            @{ Path = 'HKCU:\SOFTWARE\Policies\Microsoft\Edge'; Name = 'StartupBoostEnabled'; Value = 0; Kind = 'DWord' }
+            @{ Path = 'HKCU:\SOFTWARE\Policies\Google\Chrome'; Name = 'BackgroundModeEnabled'; Value = 0; Kind = 'DWord' }
+        }
+        'DesktopFast' {
+            Get-ProfileSpecs -Profile Desktop
+            @{ Path = 'HKCU:\Control Panel\Desktop'; Name = 'MenuShowDelay'; Value = '0'; Kind = 'String' }
+        }
+        'Delivery' {
+            $path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization'
+            @{ Path = $path; Name = 'DODownloadMode'; Value = 0; Kind = 'DWord' }
+            @{ Path = $path; Name = 'DOMaxBackgroundDownloadBandwidth'; Value = 2048; Kind = 'DWord' }
+        }
+        'AppBackground' {
+            @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy'; Name = 'LetAppsRunInBackground'; Value = 2; Kind = 'DWord' }
         }
         'Mouse' {
             @{ Path = 'HKCU:\Control Panel\Mouse'; Name = 'MouseSpeed'; Value = '0'; Kind = 'String' }
