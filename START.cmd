@@ -1,5 +1,5 @@
 @echo off
-setlocal EnableExtensions
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 title optimizations - Windows 11 26H2
 :MENU
@@ -33,7 +33,7 @@ if "%option%"=="8" (
   set "afterFile="
   set /p "beforeFile=Path to BEFORE CSV: "
   set /p "afterFile=Path to AFTER CSV: "
-  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Compare.ps1" -Before "%beforeFile%" -After "%afterFile%"
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Compare.ps1" -Before "!beforeFile!" -After "!afterFile!"
 )
 if "%option%"=="9" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Undo.ps1"
 if "%option%"=="0" exit /b 0
