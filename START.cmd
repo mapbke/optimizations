@@ -8,6 +8,7 @@ echo =========================================================
 echo  OPTIMIZATIONS / WINDOWS 11 26H2 / CS2 + FACEIT
 echo  Local scripts. Backups saved in backups folder.
 echo =========================================================
+echo 18  CS2 session optimizer
 echo  1  System diagnostic report (read only)
 echo  2  SAFE profile: disable background game recording
 echo  3  GAMING profile: Safe + transparent UI off
@@ -52,6 +53,7 @@ if "%option%"=="14" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~d
 if "%option%"=="15" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\GPU-Options.ps1"
 if "%option%"=="16" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Network-Options.ps1"
 if "%option%"=="17" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Ultra.ps1"
+if "%option%"=="18" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Game-Session.ps1"
 if "%option%"=="0" exit /b 0
 echo.
 pause
