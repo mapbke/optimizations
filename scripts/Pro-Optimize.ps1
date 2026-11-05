@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('Max','Desktop','Input')][string]$Mode = 'Max')
+param([ValidateSet('Max','Desktop','Input')][string]$Mode = 'Max', [switch]$Auto)
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 
@@ -12,6 +12,7 @@ function Test-Administrator {
 if ($Mode -eq 'Max' -and -not (Test-Administrator)) {
     Write-Host 'Requesting UAC for Windows power profile. No security protections are disabled.' -ForegroundColor Yellow
     $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -Mode Max'
+    if ($Auto) { $args += ' -Auto' }
     try {
         Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $args -Wait -ErrorAction Stop
     } catch {
@@ -72,7 +73,7 @@ Write-Host 'No Defender / Secure Boot / TPM / VBS / HVCI / IOMMU / FACEIT / Wind
 Write-Host 'IMPORTANT: many entries reduce background clutter, not FPS; Windows may ignore obsolete options.'
 Write-Host 'Backup is written before any registry values change.'
 foreach ($spec in $all) { Write-Host ("  {0}: {1}" -f $spec.Name, $spec.Reason) }
-if ((Read-Host 'Apply this profile? Type APPLY') -cne 'APPLY') { Write-Host 'Cancelled.'; exit }
+if (-not $Auto -and (Read-Host 'Apply this profile? Type APPLY') -cne 'APPLY') { Write-Host 'Cancelled.'; exit }
 
 $previous = @($all | ForEach-Object { Get-RegistryState -Path $_.Path -Name $_.Name })
 Write-Backup -Kind Registry -Payload ([ordered]@{ Profile="PRO-$Mode"; Values=$previous }) | Out-Null
