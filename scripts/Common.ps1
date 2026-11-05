@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:Root = Split-Path -Parent $PSScriptRoot
 $script:Backups = Join-Path $script:Root 'backups\release-v1'
+$script:FullscreenFlag = 'DISABLEDXMAXIMIZEDWINDOWEDMODE'
 function Assert-Windows {
     if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
         throw 'Windows is required.'
@@ -138,7 +139,11 @@ function Enter-BackupLock {
 }
 
 function Get-ProfileSpecs {
-    param([Parameter(Mandatory)][ValidateSet('Capture', 'Desktop', 'Mouse', 'Hard', 'Background', 'DesktopFast', 'Delivery', 'AppBackground')][string]$Profile)
+    param(
+        [Parameter(Mandatory)][ValidateSet('Capture', 'Desktop', 'Mouse', 'Hard', 'Background', 'DesktopFast', 'Delivery', 'AppBackground', 'Mpo', 'Fullscreen')]
+        [string]$Profile,
+        [string]$ExePath
+    )
     switch ($Profile) {
         'Capture' {
             @{ Path = 'HKCU:\System\GameConfigStore'; Name = 'GameDVR_Enabled'; Value = 0; Kind = 'DWord' }
@@ -170,6 +175,18 @@ function Get-ProfileSpecs {
         }
         'AppBackground' {
             @{ Path = 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\AppPrivacy'; Name = 'LetAppsRunInBackground'; Value = 2; Kind = 'DWord' }
+        }
+        'Mpo' {
+            @{ Path = 'HKLM:\SOFTWARE\Microsoft\Windows\Dwm'; Name = 'OverlayTestMode'; Value = 5; Kind = 'DWord' }
+        }
+        'Fullscreen' {
+            if ($ExePath -notmatch '^(?:[A-Z]:\\|\\\\)[^\r\n]+\.exe$') { throw 'An absolute executable path is required.' }
+            @{
+                Path = 'HKCU:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers'
+                Name = $ExePath
+                Value = "~ $script:FullscreenFlag"
+                Kind = 'String'
+            }
         }
         'Mouse' {
             @{ Path = 'HKCU:\Control Panel\Mouse'; Name = 'MouseSpeed'; Value = '0'; Kind = 'String' }

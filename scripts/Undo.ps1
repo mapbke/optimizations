@@ -24,9 +24,14 @@ try {
                     if ($backup.Payload.Profile -ne 'PowerMax') { throw "Unexpected power plan backup: $($file.Name)" }
                 }
                 'Registry' {
-                    $specs = @(Get-ProfileSpecs -Profile $backup.Payload.Profile)
                     $values = @($backup.Payload.Values)
                     if ($values.Count -eq 0) { throw "Empty backup: $($file.Name)" }
+                    if ($backup.Payload.Profile -eq 'Fullscreen') {
+                        if ($values.Count -ne 1) { throw "Unexpected number of compatibility values in $($file.Name)" }
+                        $specs = @(Get-ProfileSpecs -Profile Fullscreen -ExePath ($values[0].Name))
+                    } else {
+                        $specs = @(Get-ProfileSpecs -Profile $backup.Payload.Profile)
+                    }
                     foreach ($state in $values) {
                         $allowed = $specs | Where-Object { $_.Path -eq $state.Path -and $_.Name -eq $state.Name }
                         if (-not $allowed) { throw "Unexpected registry target in $($file.Name)" }

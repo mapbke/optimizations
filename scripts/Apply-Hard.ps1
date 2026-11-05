@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][ValidateSet('Hard', 'Power', 'Background', 'DesktopFast', 'Delivery', 'AppBackground')]
+    [Parameter(Mandatory)][ValidateSet('Hard', 'Power', 'Background', 'DesktopFast', 'Delivery', 'AppBackground', 'Mpo', 'Fullscreen')]
     [string]$Profile,
     [string]$ExpectedSid
 )
@@ -24,6 +24,12 @@ try {
         }
     }
 
+    if ($Profile -eq 'Mpo') {
+        $nvidia = Get-PnpDevice -Class Display -PresentOnly | Where-Object { $_.InstanceId -like 'PCI\VEN_10DE&*' }
+        if (-not $nvidia) { throw 'No NVIDIA display adapter was detected.' }
+    }
+
+    $exePath = ''
     if (-not $ExpectedSid) {
         Write-Host "optimizations / $Profile" -ForegroundColor Cyan
         if ($usesPower) {
@@ -42,10 +48,23 @@ try {
         if ($Profile -eq 'AppBackground') {
             Write-Warning 'Blocks background activity for supported Windows apps. Notifications and sync can stop.'
         }
+        if ($Profile -eq 'Mpo') {
+            Write-Warning 'Disables Multiplane Overlay system-wide. Use it for display flicker or stutter during window changes.'
+        }
+        if ($Profile -eq 'Fullscreen') {
+            Write-Host 'Close the game first. Only the executable you select will be changed.'
+            $inputPath = ([string](Read-Host 'Full path to the game .exe, or Enter to cancel')).Trim().Trim('"')
+            if (-not $inputPath) { return }
+            $exe = Get-Item -LiteralPath $inputPath
+            if ($exe -isnot [IO.FileInfo] -or $exe.Extension -ne '.exe') {
+                throw 'Select an existing game .exe file.'
+            }
+            $exePath = $exe.FullName
+        }
         if ((Read-Host 'Apply? [Y / Enter to cancel]') -notmatch '^y(es)?$') { return }
     }
 
-    if (($usesPower -or $usesMachinePolicy) -and -not (Test-PackAdministrator)) {
+    if (($usesPower -or $usesMachinePolicy -or $Profile -eq 'Mpo') -and -not (Test-PackAdministrator)) {
         if ($ExpectedSid) { throw 'Administrator privileges are required.' }
         $commandLine = '-NoProfile -ExecutionPolicy Bypass -File "{0}" -Profile {1} -ExpectedSid {2}' -f $PSCommandPath, $Profile, $sid
         $child = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $commandLine -Wait -PassThru
@@ -72,7 +91,20 @@ try {
             }
         }
         if ($Profile -ne 'Power') {
-            $specs = @(Get-ProfileSpecs -Profile $Profile)
+            $specs = @(Get-ProfileSpecs -Profile $Profile -ExePath $exePath)
+            if ($Profile -eq 'Fullscreen') {
+                $spec = $specs[0]
+                $previous = Get-RegistryState -Path $spec.Path -Name $spec.Name
+                if ($previous.Exists) {
+                    if ($previous.Kind -ne 'String') { throw 'The existing compatibility value is not a string.' }
+                    $flag = $script:FullscreenFlag
+                    if (($previous.Value -split '\s+') -contains $flag) {
+                        $spec.Value = $previous.Value
+                    } elseif (-not [string]::IsNullOrWhiteSpace($previous.Value)) {
+                        $spec.Value = "$($previous.Value.TrimEnd()) $flag"
+                    }
+                }
+            }
             Invoke-RegistryProfile -Profile $Profile -Specs $specs
         }
     } catch {
@@ -91,6 +123,10 @@ try {
     if ($powerSkipped) {
         if ($ExpectedSid) { exit 2 }
         Write-Warning $partialMessage
+        return
+    }
+    if ($Profile -eq 'Fullscreen') {
+        Write-Host '(ACTIVATED) Launch the game again. Run RESTORE.cmd to undo.' -ForegroundColor Green
         return
     }
     Write-Host '(ACTIVATED) Restart Windows. Run RESTORE.cmd to undo.' -ForegroundColor Green
