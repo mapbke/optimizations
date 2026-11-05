@@ -6,7 +6,7 @@ $out = Join-Path $reports ('system-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.
 
 function Try-Value { param([scriptblock]$Block) try { & $Block } catch { "Unavailable: $($_.Exception.Message)" } }
 $os = Get-CimInstance Win32_OperatingSystem
-$cpu = Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed
+$cpu = @(Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors, MaxClockSpeed)
 $gpu = @(Get-CimInstance Win32_VideoController | Select-Object Name, DriverVersion, CurrentHorizontalResolution, CurrentVerticalResolution, CurrentRefreshRate)
 $memoryBytes = [double]$os.TotalVisibleMemorySize * 1024
 $vbs = Try-Value { Get-CimInstance -Namespace 'root\Microsoft\Windows\DeviceGuard' -ClassName Win32_DeviceGuard | Select-Object VirtualizationBasedSecurityStatus, SecurityServicesConfigured, SecurityServicesRunning }
