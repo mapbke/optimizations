@@ -17,6 +17,8 @@ echo  6  Remove selected optional Windows apps (manual)
 echo  7  Try High Performance Windows power plan
 echo  8  Compare before/after CS2 benchmark CSV
 echo  9  UNDO all backed-up registry and power changes
+echo 10  Diagnose mouse and USB devices (read only)
+echo 11  Review startup programs in Windows Settings
 echo  0  Exit
 echo =========================================================
 set "option="
@@ -36,6 +38,8 @@ if "%option%"=="8" (
   powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Compare.ps1" -Before "!beforeFile!" -After "!afterFile!"
 )
 if "%option%"=="9" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Undo.ps1"
+if "%option%"=="10" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Input-Diagnostics.ps1"
+if "%option%"=="11" powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\Startup-Review.ps1"
 if "%option%"=="0" exit /b 0
 echo.
 pause
