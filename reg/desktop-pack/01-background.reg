@@ -1,0 +1,15 @@
+Windows Registry Editor Version 5.00
+
+; For automatic backups, apply the Background profile from DESKTOP.cmd.
+[HKEY_CURRENT_USER\System\GameConfigStore]
+"GameDVR_Enabled"=dword:00000000
+
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR]
+"AppCaptureEnabled"=dword:00000000
+
+[HKEY_CURRENT_USER\SOFTWARE\Policies\Microsoft\Edge]
+"StartupBoostEnabled"=dword:00000000
+"BackgroundModeEnabled"=dword:00000000
+
+[HKEY_CURRENT_USER\SOFTWARE\Policies\Google\Chrome]
+"BackgroundModeEnabled"=dword:00000000

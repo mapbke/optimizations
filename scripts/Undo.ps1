@@ -1,46 +1,72 @@
+[CmdletBinding()]
+param([switch]$MachineOnly, [switch]$Confirmed)
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 
 if (-not (Test-Path $script:Backups)) { Write-Host 'No backups found.'; exit 0 }
-$files = @(Get-ChildItem -LiteralPath $script:Backups -Filter 'snapshot-*.json' -File | Sort-Object LastWriteTime -Descending)
+$files = @(Get-ChildItem -LiteralPath $script:Backups -Filter 'snapshot-*.json' -File | Sort-Object Name -Descending)
 if ($files.Count -eq 0) { Write-Host 'No pending backups.'; exit 0 }
 
-$requiresAdmin = $false
-foreach ($file in $files) {
-    try {
-        $info = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
-        if ($info.Kind -in @('Power','Services','Tasks')) { $requiresAdmin = $true }
-    } catch {}
-}
-if ($requiresAdmin) {
-    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($id)
-    if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        Write-Host 'Requesting UAC to restore services, tasks and power plans.'
-        $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
-        try { Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $args -Verb RunAs -Wait }
-        catch { Write-Warning "UAC cancelled: $_" }
-        exit
-    }
-}
-
-Write-Host "Pending backup files: $($files.Count)" -ForegroundColor Yellow
-$files | ForEach-Object { Write-Host ('  ' + $_.Name) }
-Write-Warning 'Restores tracked Registry, Windows services, scheduled tasks, power plan. Deleted Appx packages are NOT restored.'
-if ((Read-Host 'Restore? Type RESTORE') -cne 'RESTORE') { exit 0 }
-
-foreach ($file in $files) {
-    try {
+$isAdmin = Test-Administrator
+if ($MachineOnly -and -not $isAdmin) { throw 'Administrator privileges are required.' }
+$currentSid = Get-PackUserSid
+$pending = @(
+    foreach ($file in $files) {
         $backup = Get-Content -LiteralPath $file.FullName -Raw | ConvertFrom-Json
         if ($backup.Host -ne $env:COMPUTERNAME) {
             Write-Warning "Backup from another computer skipped: $($file.Name)"
             continue
         }
+        $hasUser = $false
+        $hasMachine = $backup.Kind -in @('Power', 'Services', 'Tasks')
+        if ($backup.Kind -eq 'Registry') {
+            foreach ($state in @($backup.Payload.Values)) {
+                switch -Regex ($state.Path) {
+                    '^(HKCU:|Registry::HKEY_CURRENT_USER)\\' { $hasUser = $true }
+                    '^(HKLM:|Registry::HKEY_LOCAL_MACHINE)\\' { $hasMachine = $true }
+                    default { throw "Unexpected registry path in $($file.Name): $($state.Path)" }
+                }
+            }
+        }
+        if ($MachineOnly -and ($hasUser -or -not $hasMachine)) { continue }
+        $owner = $backup.PSObject.Properties['UserSid']
+        if ($hasUser -and $null -ne $owner -and $owner.Value -ne $currentSid) {
+            Write-Warning "Backup belongs to a different Windows user: $($file.Name)"
+            continue
+        }
+        [pscustomobject]@{ File=$file; Backup=$backup; HasUser=$hasUser; HasMachine=$hasMachine }
+    }
+)
+if ($pending.Count -eq 0) { Write-Host 'No backups to restore for this scope.'; exit 0 }
+
+Write-Host "Pending backup files: $($pending.Count)" -ForegroundColor Yellow
+$pending | ForEach-Object { Write-Host ('  ' + $_.File.Name) }
+if (-not $Confirmed -and (Read-Host 'Restore these snapshots? Type RESTORE') -cne 'RESTORE') { exit 0 }
+
+$needsElevation = $false
+if (-not $isAdmin -and @($pending | Where-Object { $_.HasUser -and $_.HasMachine }).Count -gt 0) {
+    Write-Warning 'A mixed user and machine snapshot requires an administrator console under the same Windows account.'
+    exit 1
+}
+
+foreach ($entry in $pending) {
+    if ($entry.HasMachine -and -not $isAdmin) {
+        $needsElevation = $true
+        continue
+    }
+    $file = $entry.File
+    $backup = $entry.Backup
+    try {
         switch ([string]$backup.Kind) {
             'Registry' {
                 foreach ($state in @($backup.Payload.Values)) { Restore-RegistryState -State $state }
             }
             'Power' {
+                $profile = $backup.Payload.PSObject.Properties['Profile']
+                if ($null -ne $profile -and $profile.Value -eq 'Desktop-EPP') {
+                    Restore-PackPowerClone -PreviousGuid $backup.Payload.PreviousGuid -NewGuid $backup.Payload.NewGuid
+                    break
+                }
                 $previous = [string]$backup.Payload.PreviousGuid
                 $regex = '^[0-9a-fA-F]{8}-(?:[0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
                 if ($previous -notmatch $regex) { throw "Invalid power scheme GUID: $previous" }
@@ -84,7 +110,13 @@ foreach ($file in $files) {
         Write-Host "Restored: $($file.Name)" -ForegroundColor Green
     } catch {
         Write-Warning "Restore error $($file.Name): $_"
-        Write-Warning 'Backup kept pending so you can inspect and retry manually.'
+        Write-Warning 'This and older backups remain pending. Fix the error before retrying.'
+        if ($MachineOnly) { [void](Read-Host 'Press Enter to return') }
+        exit 1
     }
 }
-Write-Host 'Restore completed for every successful snapshot. Restart Windows.' -ForegroundColor Green
+if ($needsElevation) {
+    Write-Host 'Requesting UAC to restore machine-wide settings.'
+    Invoke-PackElevated -Path $PSCommandPath -Arguments @('-MachineOnly', '-Confirmed')
+}
+Write-Host 'Restore finished. Restart Windows or sign out and back in.' -ForegroundColor Green

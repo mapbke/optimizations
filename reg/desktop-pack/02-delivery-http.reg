@@ -1,0 +1,5 @@
+Windows Registry Editor Version 5.00
+
+; For automatic backups or a bandwidth cap, use DESKTOP.cmd.
+[HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Windows\DeliveryOptimization]
+"DODownloadMode"=dword:00000000

@@ -1,12 +1,19 @@
 [CmdletBinding()]
-param([ValidateSet('Safe', 'Gaming', 'Mouse', 'Desktop')][string]$Profile = 'Safe')
+param([ValidateSet('Safe', 'Gaming', 'Mouse', 'Desktop', 'Background')][string]$Profile = 'Safe')
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 
 $specs = @()
-if ($Profile -in @('Safe', 'Gaming')) {
+if ($Profile -in @('Safe', 'Gaming', 'Background')) {
     $specs += @{ Path = 'HKCU:\System\GameConfigStore'; Name = 'GameDVR_Enabled'; Value = 0; Kind = 'DWord' }
     $specs += @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR'; Name = 'AppCaptureEnabled'; Value = 0; Kind = 'DWord' }
+}
+if ($Profile -eq 'Background') {
+    $edge = 'HKCU:\SOFTWARE\Policies\Microsoft\Edge'
+    $chrome = 'HKCU:\SOFTWARE\Policies\Google\Chrome'
+    $specs += @{ Path = $edge; Name = 'StartupBoostEnabled'; Value = 0; Kind = 'DWord' }
+    $specs += @{ Path = $edge; Name = 'BackgroundModeEnabled'; Value = 0; Kind = 'DWord' }
+    $specs += @{ Path = $chrome; Name = 'BackgroundModeEnabled'; Value = 0; Kind = 'DWord' }
 }
 if ($Profile -in @('Gaming', 'Desktop')) {
     $specs += @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'; Name = 'EnableTransparency'; Value = 0; Kind = 'DWord' }
@@ -25,10 +32,14 @@ if ($Profile -eq 'Mouse') {
 Write-Host "Profile: $Profile" -ForegroundColor Yellow
 Write-Host 'Exact registry changes:'
 $specs | ForEach-Object { Write-Host ("  {0}\{1} = {2} ({3})" -f $_.Path, $_.Name, $_.Value, $_.Kind) }
-Write-Warning 'Changes may require sign-out/restart. Mouse settings do not fix broken hardware or change CS2 raw input.'
-if ((Read-Host 'Apply these changes? Type YES') -cne 'YES') { Write-Host 'Cancelled.'; exit 0 }
+if ($Profile -eq 'Background') {
+    Write-Warning 'Windows game capture will be disabled. Closed browsers may stop background notifications and extensions.'
+}
+if ((Read-Host 'Apply these changes? Type YES') -cne 'YES') { Write-Host 'Cancelled.'; return }
 
-$old = @($specs | ForEach-Object { Get-RegistryState -Path $_.Path -Name $_.Name })
-Write-Backup -Kind 'Registry' -Payload ([ordered]@{ Profile = $Profile; Values = $old }) | Out-Null
-foreach ($entry in $specs) { Set-RegistrySpec -Spec $entry }
-Write-Host 'Applied. A sign-out or Windows restart is recommended.' -ForegroundColor Green
+Invoke-RegistryProfile -Profile $Profile -Specs $specs
+if ($Profile -eq 'Background') {
+    Write-Host 'Relaunch Edge and Chrome, and sign out and back in for capture changes.'
+} else {
+    Write-Host 'Sign out and back in to refresh user settings.'
+}
