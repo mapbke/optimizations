@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([ValidateSet('Safe', 'Gaming', 'Mouse')][string]$Profile = 'Safe')
+param([ValidateSet('Safe', 'Gaming', 'Mouse', 'Desktop')][string]$Profile = 'Safe')
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 
@@ -8,8 +8,12 @@ if ($Profile -in @('Safe', 'Gaming')) {
     $specs += @{ Path = 'HKCU:\System\GameConfigStore'; Name = 'GameDVR_Enabled'; Value = 0; Kind = 'DWord' }
     $specs += @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\GameDVR'; Name = 'AppCaptureEnabled'; Value = 0; Kind = 'DWord' }
 }
-if ($Profile -eq 'Gaming') {
+if ($Profile -in @('Gaming', 'Desktop')) {
     $specs += @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize'; Name = 'EnableTransparency'; Value = 0; Kind = 'DWord' }
+}
+if ($Profile -eq 'Desktop') {
+    $specs += @{ Path = 'HKCU:\Control Panel\Desktop\WindowMetrics'; Name = 'MinAnimate'; Value = '0'; Kind = 'String' }
+    $specs += @{ Path = 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced'; Name = 'TaskbarAnimations'; Value = 0; Kind = 'DWord' }
 }
 if ($Profile -eq 'Mouse') {
     $path = 'HKCU:\Control Panel\Mouse'
