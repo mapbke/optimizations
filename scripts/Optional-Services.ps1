@@ -1,11 +1,13 @@
 [CmdletBinding()]
-param()
+param([ValidateSet('Ask','All')][string]$Preset = 'Ask', [switch]$Auto)
 . "$PSScriptRoot\Common.ps1"
 Assert-Windows
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = New-Object Security.Principal.WindowsPrincipal($id)
 if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
     $args = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '"'
+    if ($Preset -eq 'All') { $args += ' -Preset All' }
+    if ($Auto) { $args += ' -Auto' }
     try { Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -Verb RunAs -ArgumentList $args -Wait }
     catch { Write-Warning "Elevation cancelled: $_" }
     exit
@@ -18,7 +20,7 @@ Write-Host '3) SysMain (prefetch optimization may stop working)'
 Write-Host '4) Downloaded offline maps service'
 Write-Host '5) All of the above (AGGRESSIVE)'
 Write-Host '0) Cancel'
-$answer = Read-Host 'Choose number'
+$answer = if ($Preset -eq 'All') { '5' } else { Read-Host 'Choose number' }
 if ($answer -notin @('1','2','3','4','5')) { exit }
 $services = @()
 if ($answer -in @('1','5')) { $services += 'DiagTrack' }
@@ -29,7 +31,7 @@ if ($answer -in @('4','5')) { $services += 'MapsBroker' }
 Write-Host 'Will set these services to Disabled:' -ForegroundColor Yellow
 $services | ForEach-Object { Write-Host "  $_" }
 Write-Host 'This can reduce functionality. Some updates might restore the defaults.'
-if ((Read-Host 'Confirm these services? Type DEEP') -cne 'DEEP') { exit }
+if (-not $Auto -and (Read-Host 'Confirm these services? Type DEEP') -cne 'DEEP') { exit }
 
 $states = @()
 foreach ($name in $services) {
