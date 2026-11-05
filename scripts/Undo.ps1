@@ -46,7 +46,8 @@ foreach ($file in $files) {
                 if ($previous -notmatch $regex) { throw "Invalid power scheme GUID: $previous" }
                 & powercfg.exe /setactive $previous | Out-Null
                 if ($LASTEXITCODE -ne 0) { throw 'Could not activate old power plan' }
-                if ($null -ne $backup.Payload.NewGuid) {
+                $cloneProperty = $backup.Payload.PSObject.Properties['NewGuid']
+                if ($null -ne $cloneProperty -and -not [string]::IsNullOrWhiteSpace([string]$cloneProperty.Value)) {
                     $newGuid = [string]$backup.Payload.NewGuid
                     if ($newGuid -notmatch $regex -or $newGuid -eq $previous) { throw 'Invalid cloned power GUID' }
                     & powercfg.exe /delete $newGuid | Out-Null
