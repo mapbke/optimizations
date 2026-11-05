@@ -1,0 +1,10 @@
+Windows Registry Editor Version 5.00
+
+; Optional visual smoothness/UI: no minimize animations, transparent effects or taskbar animations.
+; For reversibility use MAX.cmd, not direct .reg import.
+[HKEY_CURRENT_USER\Control Panel\Desktop\WindowMetrics]
+"MinAnimate"="0"
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize]
+"EnableTransparency"=dword:00000000
+[HKEY_CURRENT_USER\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\Advanced]
+"TaskbarAnimations"=dword:00000000
